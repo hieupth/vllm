@@ -1,0 +1,74 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month in YY.MM format (e.g., 26.03)'
+        required: false
+        type: string
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    container:
+      image: hieupth/mamba
+    outputs:
+      matrix: ${{ steps.get-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: conda install -y requests
+
+      - name: Generate build matrix
+        id: get-matrix
+        run: |
+          MONTH="${{ github.event.inputs.month }}"
+          [ -z "$MONTH" ] && MONTH=$(date +'%y.%m')
+          echo "Month: $MONTH"
+
+          # Run build-matrix.py - it will exit with error code if validation fails
+          python .github/workflows/scripts/build-matrix.py "$MONTH" > /tmp/matrix.json 2>&1
+          EXIT_CODE=$?
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "::error::$(cat /tmp/matrix.json)"
+            exit 1
+          fi
+
+          MATRIX=$(cat /tmp/matrix.json)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Matrix: $MATRIX"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+      fail-fast: false
+    steps:
+      - name: Build and push Docker image
+        uses: hieupth/gh-docker-actions/docker-build-push@v1
+        with:
+          image: hieupth/vllm
+          tags: hieupth/vllm:${{ matrix.tag }}
+          build_args: |
+            VLLM_VERSION=${{ matrix.vllm_version }}
+            CUDA_VERSION=${{ matrix.cuda_version }}
+            CUDNN_VERSION=${{ matrix.cudnn_version }}
+            PYTORCH_VERSION=${{ matrix.pytorch_version }}
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          push: true
