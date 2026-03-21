@@ -1,0 +1,21 @@
+# Example configuration file for vLLM serving
+# Copy this file and modify as needed
+
+# Required: Hugging Face model ID
+model: "meta-llama/Llama-3.2-1B"
+
+# Optional: Hugging Face API token (for private/gated models)
+# Can also be set via HF_TOKEN environment variable
+token: ""
+
+# Optional: Specific model revision/branch
+revision: ""
+
+# Optional: vLLM server arguments
+vllm_args:
+  host: "0.0.0.0"
+  port: "8000"
+  tensor-parallel-size: "1"
+  gpu-memory-utilization: "0.9"
+  max-model-len: "4096"
+  # Add more vLLM arguments as needed
